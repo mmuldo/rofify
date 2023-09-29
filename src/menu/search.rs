@@ -5,14 +5,14 @@ use async_trait::async_trait;
 use rspotify::{
     prelude::*,
     AuthCodePkceSpotify,
-    model::{Device, SearchType, SearchResult},
+    model::{Device, SearchType, SearchResult, SimplifiedAlbum},
 };
 use strum::{IntoEnumIterator, EnumIter};
 use std::env;
 
 use crate::config::Config;
 
-use super::{Menu, MenuProgram, MenuResult, selection_index, album::AlbumMenu, track::TrackMenu};
+use super::{Menu, MenuProgram, MenuResult, selection_index, playback::PlaybackMenu};
 
 pub struct SearchMenu {
     client: Arc<AuthCodePkceSpotify>,
@@ -48,10 +48,13 @@ impl Menu for SearchMenu {
         match result {
             Ok(result) => match result {
                 SearchResult::Albums(page) => MenuResult::Menu(Box::new(
-                    AlbumMenu::new(Arc::clone(&self.client), page.items).await
+                    PlaybackMenu::new(Arc::clone(&self.client), page.items).await
                 )),
                 SearchResult::Tracks(page) => MenuResult::Menu(Box::new(
-                    TrackMenu::new(Arc::clone(&self.client), page.items).await
+                    PlaybackMenu::new(Arc::clone(&self.client), page.items).await
+                )),
+                SearchResult::Playlists(page) => MenuResult::Menu(Box::new(
+                    PlaybackMenu::new(Arc::clone(&self.client), page.items).await
                 )),
                 _ => MenuResult::Exit
             }

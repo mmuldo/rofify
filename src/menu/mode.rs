@@ -16,6 +16,7 @@ use super::{Menu, MenuProgram, MenuResult, device::DeviceMenu, search::SearchMen
 pub enum Mode {
     TrackSearch,
     AlbumSearch,
+    PlaylistSearch,
     Device,
 }
 
@@ -24,6 +25,7 @@ impl fmt::Display for Mode {
         let text = match self {
             Self::TrackSearch => "Track Search",
             Self::AlbumSearch => "Album Search",
+            Self::PlaylistSearch => "Playlist Search",
             Self::Device => "Device",
         };
         write!(f, "{text}")
@@ -40,6 +42,7 @@ impl FromStr for Mode {
         match s {
             "Track Search" => Ok(Self::TrackSearch),
             "Album Search" => Ok(Self::AlbumSearch),
+            "Playlist Search" => Ok(Self::PlaylistSearch),
             "Device" => Ok(Self::Device),
             _ => Err(ParseModeError)
         }
@@ -75,6 +78,9 @@ impl Menu for ModeMenu {
                 )),
                 Mode::AlbumSearch => MenuResult::Menu(Box::new(
                     SearchMenu::new(Arc::clone(&self.client), SearchType::Album).await
+                )),
+                Mode::PlaylistSearch => MenuResult::Menu(Box::new(
+                    SearchMenu::new(Arc::clone(&self.client), SearchType::Playlist).await
                 )),
                 Mode::Device => MenuResult::Menu(Box::new(
                     DeviceMenu::new(Arc::clone(&self.client)).await

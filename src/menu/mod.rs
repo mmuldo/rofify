@@ -1,8 +1,7 @@
-pub mod album;
-pub mod mode;
 pub mod device;
+pub mod mode;
+pub mod playback;
 pub mod search;
-pub mod track;
 
 use core::fmt;
 use std::{process::{Command, Stdio}, str::FromStr, num::ParseIntError};
