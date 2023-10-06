@@ -1,15 +1,21 @@
+use notify_rust::Notification;
 use thiserror;
-use core::fmt;
-use std::{process::{Command, Stdio}, str::FromStr, num::ParseIntError, sync::Arc, io::{self,}, result};
+use std::{
+    sync::Arc,
+    result,
+    num::IntErrorKind,
+};
 
 use async_trait::async_trait;
 use rspotify::{
     prelude::*,
     AuthCodePkceSpotify,
-    model::{Device, SimplifiedAlbum, FullTrack, SimplifiedPlaylist},
+    model::{
+        SimplifiedAlbum,
+        FullTrack,
+        SimplifiedPlaylist, FullArtist,
+    },
 };
-use strum::{IntoEnumIterator, EnumIter};
-use std::env;
 
 use crate::config;
 
@@ -53,23 +59,34 @@ impl<T: ListItem + StartPlayback + Send + Sync> Menu for PlaybackMenu<T> {
 
     async fn select(&self, program: MenuProgram) -> MenuResult {
         let selection = self.prompt(program);
-        let parsed_index = selection_index(selection);
+        let parsed_index = selection_index(&selection);
+        let mut notification = Notification::new();
 
         match parsed_index {
             Ok(index) => {
                 let item = &self.items[index];
 
                 match item.start_playback(Arc::clone(&self.client)).await {
-                    Ok(_) => MenuResult::Exit,
+                    Ok(_) => {
+                        MenuResult::Exit(None)
+                    },
                     Err(error) => {
-                        println!("{error}");
-                        MenuResult::Back
+                        notification.summary("Error");
+                        notification.body(format!("Failed to start playback: {error}").as_str());
+                        MenuResult::Back(Some(notification))
                     }
                 }
             }
-            Err(_) => {
-                println!("failed to get index of selected item");
-                MenuResult::Back
+            Err(error) => {
+                let maybe_notification = match error.kind() {
+                    IntErrorKind::Empty => None,
+                    _ => {
+                        notification.summary("Error");
+                        notification.body(format!("Failed to get index of selected item {selection:#?}: {error}").as_str());
+                        Some(notification)
+                    }
+                };
+                MenuResult::Back(maybe_notification)
             }
         }
     }
@@ -167,6 +184,29 @@ impl StartPlayback for SimplifiedPlaylist {
 
         client.start_context_playback(
             PlayContextId::Playlist(self.id.clone()),
+            Some(&config.device_id),
+            None,
+            None
+        ).await?;
+
+        Ok(())
+    }
+}
+
+impl ListItem for FullArtist {
+    fn list_item(&self, index: usize) -> String {
+        format!("{}: {}", index, self.name)
+    }
+}
+
+#[async_trait]
+impl StartPlayback for FullArtist {
+    async fn start_playback(&self, client: Arc<AuthCodePkceSpotify>) -> Result<()> {
+
+        let config = config::Config::load()?;
+
+        client.start_context_playback(
+            PlayContextId::Artist(self.id.clone()),
             Some(&config.device_id),
             None,
             None

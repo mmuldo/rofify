@@ -3,17 +3,14 @@ pub mod mode;
 pub mod playback;
 pub mod search;
 
-use core::fmt;
-use std::{process::{Command, Stdio}, str::FromStr, num::ParseIntError};
+use std::{
+    process::{Command, Stdio},
+    num::ParseIntError
+};
 
 use async_trait::async_trait;
-use rspotify::{
-    prelude::*,
-    AuthCodePkceSpotify,
-    model::Device
-};
-use strum::{IntoEnumIterator, EnumIter};
-use std::env;
+
+use notify_rust::Notification;
 
 #[async_trait]
 pub trait Menu {
@@ -39,8 +36,8 @@ pub trait Menu {
 
 pub enum MenuResult {
     Menu(Box<dyn Menu>),
-    Back,
-    Exit,
+    Back(Option<Notification>),
+    Exit(Option<Notification>),
 }
 
 pub enum MenuProgram {
@@ -62,7 +59,7 @@ impl MenuProgram {
 }
 
 
-pub fn selection_index(selection: String) -> Result<usize, ParseIntError> {
+pub fn selection_index(selection: &str) -> Result<usize, ParseIntError> {
     selection
         .chars()
         .take_while(|&ch| ch != ':')

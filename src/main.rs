@@ -6,18 +6,16 @@ use rofify::{
         MenuProgram, MenuResult
     }
 };
-use rspotify::{
-    prelude::*,
-    model::{PlayableItem, AdditionalType, Country, Market, CurrentlyPlayingContext, SearchType, SearchResult},
-    AuthCodeSpotify,
-    Credentials,
-    OAuth,
-    ClientError
+use std::{
+    env,
+    sync::Arc
 };
-use std::{process::{Command, Stdio}, io::Write, str, sync::Arc};
+
+static ICON_PATH: &str = "spotify.png";
 
 #[tokio::main]
 async fn main() {
+    let icon_path = env::current_dir().unwrap().join(ICON_PATH).into_os_string().into_string().unwrap();
     let client = Arc::new(auth::get_token().await);
 
     let mode_menu = Box::new(ModeMenu::new(Arc::clone(&client)));
@@ -29,8 +27,20 @@ async fn main() {
                 menu_stack.push(menu);
                 menu_stack.push(new_menu);
             },
-            MenuResult::Back => continue,
-            MenuResult::Exit => break
+            MenuResult::Back(maybe_notification) => {
+                if let Some(mut notification) = maybe_notification {
+                    notification.icon(&icon_path);
+                    notification.show().unwrap();
+                };
+                continue
+            },
+            MenuResult::Exit(maybe_notification) => {
+                if let Some(mut notification) = maybe_notification {
+                    notification.icon(&icon_path);
+                    notification.show().unwrap();
+                };
+                break
+            }
         }
     }
 }

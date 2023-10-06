@@ -1,18 +1,24 @@
-use core::fmt;
-use std::{process::{Command, Stdio}, str::FromStr, num::ParseIntError, sync::Arc};
+use std::{
+    sync::Arc,
+    num::IntErrorKind
+};
 
 use async_trait::async_trait;
+use notify_rust::Notification;
 use rspotify::{
     prelude::*,
     AuthCodePkceSpotify,
     model::Device
 };
-use strum::{IntoEnumIterator, EnumIter};
-use std::env;
 
 use crate::config::Config;
 
-use super::{Menu, MenuProgram, MenuResult, selection_index};
+use super::{
+    Menu,
+    MenuProgram,
+    MenuResult,
+    selection_index
+};
 
 pub struct DeviceMenu {
     client: Arc<AuthCodePkceSpotify>,
@@ -43,7 +49,8 @@ impl Menu for DeviceMenu {
 
     async fn select(&self, program: MenuProgram) -> MenuResult {
         let selection = self.prompt(program);
-        let parsed_index = selection_index(selection);
+        let parsed_index = selection_index(&selection);
+        let mut notification = Notification::new();
 
         match parsed_index {
             Ok(index) => {
@@ -51,15 +58,40 @@ impl Menu for DeviceMenu {
                 let device_id = device.id.clone().unwrap();
                 let mut config = match Config::load() {
                     Ok(config) => config,
-                    Err(_) => Config { device_id: String::new() }
+                    Err(_) => Config::default()
                 };
+
                 config.device_id = device_id;
-                config.save();
-                MenuResult::Exit
+                match config.save() {
+                    Ok(_) => {
+                        match self.client.transfer_playback(&config.device_id, Some(true)).await {
+                            Ok(_) => {
+                                notification.summary(format!("Device set to {}", device.name).as_str());
+                            },
+                            Err(error) => {
+                                notification.summary("Error");
+                                notification.body(format!("Failed to switch playback to {}: {error}", device.name).as_str());
+                            }
+                        }
+                    },
+                    Err(error) => {
+                        notification.summary("Error");
+                        notification.body(format!("Failed to set device to {}: {error}", device.name).as_str());
+                    }
+                };
+
+                MenuResult::Exit(Some(notification))
             }
-            Err(_) => {
-                println!("failed to get index of selected item");
-                MenuResult::Back
+            Err(error) => {
+                let maybe_notification = match error.kind() {
+                    IntErrorKind::Empty => None,
+                    _ => {
+                        notification.summary("Error");
+                        notification.body(format!("Failed to get index of selected item {selection:#?}: {error}").as_str());
+                        Some(notification)
+                    }
+                };
+                MenuResult::Back(maybe_notification)
             }
         }
     }

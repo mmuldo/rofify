@@ -1,18 +1,24 @@
-use core::fmt;
-use std::{process::{Command, Stdio}, str::FromStr, num::ParseIntError, sync::Arc};
+use std::sync::Arc;
 
 use async_trait::async_trait;
+use notify_rust::Notification;
 use rspotify::{
     prelude::*,
     AuthCodePkceSpotify,
-    model::{Device, SearchType, SearchResult, SimplifiedAlbum},
+    model::{
+        SearchType,
+        SearchResult
+    },
 };
-use strum::{IntoEnumIterator, EnumIter};
-use std::env;
 
-use crate::config::Config;
+use super::{
+    Menu,
+    MenuProgram,
+    MenuResult,
+    playback::PlaybackMenu
+};
 
-use super::{Menu, MenuProgram, MenuResult, selection_index, playback::PlaybackMenu};
+static SEARCH_LIMIT: u32 = 25;
 
 pub struct SearchMenu {
     client: Arc<AuthCodePkceSpotify>,
@@ -35,18 +41,28 @@ impl Menu for SearchMenu {
     }
 
     async fn select(&self, program: MenuProgram) -> MenuResult {
+        let mut notification = Notification::new();
         let query = self.prompt(program);
+
+        if query.is_empty() {
+            // user hit Esc or something
+            return MenuResult::Back(None);
+        }
+
         let result = self.client.search(
             &query,
             self.search_type,
             None,
             None,
-            Some(10),
-            Some(0),
+            Some(SEARCH_LIMIT),
+            None,
         ).await;
 
         match result {
             Ok(result) => match result {
+                SearchResult::Artists(page) => MenuResult::Menu(Box::new(
+                    PlaybackMenu::new(Arc::clone(&self.client), page.items).await
+                )),
                 SearchResult::Albums(page) => MenuResult::Menu(Box::new(
                     PlaybackMenu::new(Arc::clone(&self.client), page.items).await
                 )),
@@ -56,10 +72,12 @@ impl Menu for SearchMenu {
                 SearchResult::Playlists(page) => MenuResult::Menu(Box::new(
                     PlaybackMenu::new(Arc::clone(&self.client), page.items).await
                 )),
-                _ => MenuResult::Exit
+                _ => MenuResult::Exit(None)
             }
-            Err(_) => {
-                MenuResult::Back
+            Err(error) => {
+                notification.summary("Error");
+                notification.body(format!("Failed to get results for search {query:#?}: {error}").as_str());
+                MenuResult::Back(Some(notification))
             }
         }
     }
