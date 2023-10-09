@@ -8,6 +8,6 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
 controller = { path = "../controller" }
-notify-rust = "4.9.0"
+notify = { path = "../notify" }
 rofify = { path = "../rofify" }
 tokio = { version = "1.32.0", features = ["full"] }

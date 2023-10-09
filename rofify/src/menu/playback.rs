@@ -1,4 +1,4 @@
-use notify_rust::Notification;
+use notify::enotify;
 use thiserror;
 use std::{
     sync::Arc,
@@ -17,9 +17,7 @@ use rspotify::{
     },
 };
 
-use crate::config;
-
-use super::{Menu, MenuProgram, MenuResult, selection_index};
+use super::{Menu, MenuProgram, MenuResult, selection_index, device::device_id};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -27,8 +25,6 @@ pub enum Error {
     Client(#[from] rspotify::ClientError),
     #[error("no id found for {0}")]
     NoId(String),
-    #[error("error with config file: {0}")]
-    Config(#[from] config::Error),
 }
 
 pub type Result<T> = result::Result<T, Error>;
@@ -58,35 +54,28 @@ impl<T: ListItem + StartPlayback + Send + Sync> Menu for PlaybackMenu<T> {
     }
 
     async fn select(&self, program: MenuProgram) -> MenuResult {
-        let selection = self.prompt(program);
+        let selection = self.prompt(program.clone());
         let parsed_index = selection_index(&selection);
-        let mut notification = Notification::new();
 
         match parsed_index {
             Ok(index) => {
                 let item = &self.items[index];
 
-                match item.start_playback(Arc::clone(&self.client)).await {
+                match item.start_playback(Arc::clone(&self.client), program).await {
                     Ok(_) => {
-                        MenuResult::Exit(None)
+                        MenuResult::Exit
                     },
                     Err(error) => {
-                        notification.summary("Error");
-                        notification.body(format!("Failed to start playback: {error}").as_str());
-                        MenuResult::Back(Some(notification))
+                        enotify(&format!("Failed to start playback: {error}"));
+                        MenuResult::Back
                     }
                 }
             }
             Err(error) => {
-                let maybe_notification = match error.kind() {
-                    IntErrorKind::Empty => None,
-                    _ => {
-                        notification.summary("Error");
-                        notification.body(format!("Failed to get index of selected item {selection:#?}: {error}").as_str());
-                        Some(notification)
-                    }
+                if error.kind().clone() != IntErrorKind::Empty {
+                    enotify(&format!("Failed to get index of selected item {selection:#?}: {error}"));
                 };
-                MenuResult::Back(maybe_notification)
+                MenuResult::Back
             }
         }
     }
@@ -98,7 +87,7 @@ pub trait ListItem {
 
 #[async_trait]
 pub trait StartPlayback {
-    async fn start_playback(&self, client: Arc<AuthCodePkceSpotify>) -> Result<()>;
+    async fn start_playback(&self, client: Arc<AuthCodePkceSpotify>, program: MenuProgram) -> Result<()>;
 }
 
 impl ListItem for SimplifiedAlbum {
@@ -113,18 +102,16 @@ impl ListItem for SimplifiedAlbum {
 
 #[async_trait]
 impl StartPlayback for SimplifiedAlbum {
-    async fn start_playback(&self, client: Arc<AuthCodePkceSpotify>) -> Result<()> {
+    async fn start_playback(&self, client: Arc<AuthCodePkceSpotify>, program: MenuProgram) -> Result<()> {
 
         let id = match &self.id {
             Some(id) => Ok(id.clone()),
             None => Err(Error::NoId(self.name.to_owned()))
         }?;
 
-        let config = config::Config::load()?;
-
         client.start_context_playback(
             PlayContextId::Album(id),
-            Some(&config.device_id),
+            device_id(Arc::clone(&client), program).await.as_deref(),
             None,
             None
         ).await?;
@@ -145,18 +132,16 @@ impl ListItem for FullTrack {
 
 #[async_trait]
 impl StartPlayback for FullTrack {
-    async fn start_playback(&self, client: Arc<AuthCodePkceSpotify>) -> Result<()> {
+    async fn start_playback(&self, client: Arc<AuthCodePkceSpotify>, program: MenuProgram) -> Result<()> {
 
         let id = match &self.id {
             Some(id) => Ok(id.clone()),
             None => Err(Error::NoId(self.name.to_owned()))
         }?;
 
-        let config = config::Config::load()?;
-
         client.start_uris_playback(
             [PlayableId::Track(id)].iter().map(PlayableId::as_ref),
-            Some(&config.device_id),
+            device_id(Arc::clone(&client), program).await.as_deref(),
             None,
             None
         ).await?;
@@ -178,13 +163,11 @@ impl ListItem for SimplifiedPlaylist {
 
 #[async_trait]
 impl StartPlayback for SimplifiedPlaylist {
-    async fn start_playback(&self, client: Arc<AuthCodePkceSpotify>) -> Result<()> {
-
-        let config = config::Config::load()?;
+    async fn start_playback(&self, client: Arc<AuthCodePkceSpotify>, program: MenuProgram) -> Result<()> {
 
         client.start_context_playback(
             PlayContextId::Playlist(self.id.clone()),
-            Some(&config.device_id),
+            device_id(Arc::clone(&client), program).await.as_deref(),
             None,
             None
         ).await?;
@@ -201,13 +184,10 @@ impl ListItem for FullArtist {
 
 #[async_trait]
 impl StartPlayback for FullArtist {
-    async fn start_playback(&self, client: Arc<AuthCodePkceSpotify>) -> Result<()> {
-
-        let config = config::Config::load()?;
-
+    async fn start_playback(&self, client: Arc<AuthCodePkceSpotify>, program: MenuProgram) -> Result<()> {
         client.start_context_playback(
             PlayContextId::Artist(self.id.clone()),
-            Some(&config.device_id),
+            device_id(Arc::clone(&client), program).await.as_deref(),
             None,
             None
         ).await?;

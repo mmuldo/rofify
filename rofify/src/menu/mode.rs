@@ -8,7 +8,7 @@ use futures::{
     StreamExt
 };
 use async_trait::async_trait;
-use notify_rust::Notification;
+use notify::enotify;
 use rspotify::{
     prelude::*,
     AuthCodePkceSpotify,
@@ -97,7 +97,6 @@ impl Menu for ModeMenu {
     }
 
     async fn select(&self, program: MenuProgram) -> MenuResult {
-        let mut notification = Notification::new();
         let selection = self.prompt(program);
         let parsed_mode = Mode::from_str(selection.as_str());
 
@@ -124,9 +123,8 @@ impl Menu for ModeMenu {
                                 PlaybackMenu::new(Arc::clone(&self.client), playlists).await
                             )),
                             Err(error) => {
-                                notification.summary("Error");
-                                notification.body(format!("Failed to get playlists: {error}").as_str());
-                                MenuResult::Back(Some(notification))
+                                enotify(&format!("Failed to get playlists: {error}"));
+                                MenuResult::Back
                             }
                         }
                 },
@@ -145,9 +143,8 @@ impl Menu for ModeMenu {
                             PlaybackMenu::new(Arc::clone(&self.client), liked_songs).await
                         )),
                         Err(error) => {
-                            notification.summary("Error");
-                            notification.body(format!("Failed to get liked songs: {error}").as_str());
-                            MenuResult::Back(Some(notification))
+                            enotify(&format!("Failed to get liked songs: {error}"));
+                            MenuResult::Back
                         }
                     }
                 }
@@ -156,19 +153,10 @@ impl Menu for ModeMenu {
                 )),
             }
             Err(_) => {
-                let maybe_notification = match selection.as_str() {
-                    "" => {
-                        // user hit Esc or something
-                        None
-                    },
-                    _ => {
-                        let mut notification = Notification::new();
-                        notification.summary("Error");
-                        notification.body(format!("{selection:#?} is not a valid mode").as_str());
-                        Some(notification)
-                    }
-                };
-                MenuResult::Back(maybe_notification)
+                if !selection.is_empty() {
+                    enotify(&format!("{selection:#?} is not a valid mode"));
+                }
+                MenuResult::Back
             }
         }
     }

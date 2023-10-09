@@ -2,7 +2,8 @@
 members = [
     "cli",
     "controller",
-    "visualizer",
+    "notify",
     "rofify",
+    "visualizer",
 ]
 resolver = "2"

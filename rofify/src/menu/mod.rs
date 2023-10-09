@@ -10,8 +10,6 @@ use std::{
 
 use async_trait::async_trait;
 
-use notify_rust::Notification;
-
 #[async_trait]
 pub trait Menu {
     fn items(&self) -> Vec<String>;
@@ -36,11 +34,12 @@ pub trait Menu {
 
 pub enum MenuResult {
     Menu(Box<dyn Menu>),
-    Back(Option<Notification>),
-    Exit(Option<Notification>),
+    Back,
+    Exit,
     Input(String),
 }
 
+#[derive(Clone)]
 pub enum MenuProgram {
     Rofi,
     DMenu,

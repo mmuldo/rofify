@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
-use notify_rust::Notification;
-use std::{sync::Arc, process::exit, env};
-use rofify::{auth, ICON_PATH};
+use notify::enotify;
+use std::{sync::Arc, process::exit};
+use rofify::{auth, menu::MenuProgram};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -20,45 +20,27 @@ enum Commands {
     Visualize
 }
 
+const PROGRAM: MenuProgram = MenuProgram::Rofi;
+
 #[tokio::main]
 async fn main() {
     let mut exit_code = 0;
-    let icon_path = env::current_dir().unwrap().join(ICON_PATH).into_os_string().into_string().unwrap();
-    let mut notification = Notification::new();
-    notification.icon(&icon_path);
     let cli = Cli::parse();
 
-    match auth::auth().await {
+    match auth::auth(PROGRAM).await {
         Ok(client) => {
             let client = Arc::new(client);
             match cli.command {
-                Commands::Show => rofify::show(client).await,
-                Commands::Control{ action } => match controller::control(client, action).await {
-                    Ok(_) => (),
-                    Err(error) => {
-                        notification.summary("Error");
-                        notification.body(&format!("Failed to perform action: {error}"));
-                        match notification.show() {
-                            Ok(_) => (),
-                            Err(error) => eprintln!("Failed to send notification: {error}"),
-                        }
-                    }
+                Commands::Show => rofify::show(client, PROGRAM).await,
+                Commands::Control{ action } => if let Err(error) = controller::control(client, &action, PROGRAM).await {
+                    enotify(&format!("Failed to perform {}: {error}", &action));
+                    exit_code = 1;
                 },
                 Commands::Visualize => println!("visualize"),
             }
         },
         Err(error) => {
-            match error {
-                auth::Error::Notification(error) => eprintln!("Failed to send notification: {error}"),
-                _ => {
-                    notification.summary("Error");
-                    notification.body(&format!("Failed to authenticate with spotify: {error}"));
-                    match notification.show() {
-                        Ok(_) => (),
-                        Err(error) => eprintln!("Failed to send notification: {error}"),
-                    }
-                }
-            };
+            enotify(&format!("Failed to authenticate with spotify: {error}"));
             exit_code = 1;
         }
     }

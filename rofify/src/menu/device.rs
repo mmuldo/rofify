@@ -4,7 +4,10 @@ use std::{
 };
 
 use async_trait::async_trait;
-use notify_rust::Notification;
+use notify::{
+    notify,
+    enotify
+};
 use rspotify::{
     prelude::*,
     AuthCodePkceSpotify,
@@ -50,49 +53,79 @@ impl Menu for DeviceMenu {
     async fn select(&self, program: MenuProgram) -> MenuResult {
         let selection = self.prompt(program);
         let parsed_index = selection_index(&selection);
-        let mut notification = Notification::new();
 
         match parsed_index {
             Ok(index) => {
                 let device = &self.devices[index];
-                let device_id = device.id.clone().unwrap();
-                let mut config = match Config::load() {
-                    Ok(config) => config,
-                    Err(_) => Config::default()
-                };
 
-                config.device_id = device_id;
-                match config.save() {
-                    Ok(_) => {
-                        match self.client.transfer_playback(&config.device_id, Some(true)).await {
-                            Ok(_) => {
-                                notification.summary(format!("Device set to {}", device.name).as_str());
+                match device.id.clone() {
+                    Some(id) => {
+                        match Config::load() {
+                            Ok(mut config) => {
+                                config.device_id = Some(id.clone());
+
+                                match config.store() {
+                                    Ok(_) => {
+                                        match self.client.transfer_playback(&id, Some(true)).await {
+                                            Ok(_) => {
+                                                notify(&format!("Device set to {}", device.name), "")
+                                            },
+                                            Err(error) => {
+                                                enotify(&format!("Failed to switch playback to {}: {error}", device.name))
+                                            }
+                                        }
+                                    },
+                                    Err(error) => enotify(&format!("Failed to set device to {}: {error}", device.name))
+                                };
+
+                                MenuResult::Exit
                             },
                             Err(error) => {
-                                notification.summary("Error");
-                                notification.body(format!("Failed to switch playback to {}: {error}", device.name).as_str());
-                            }
+                                enotify(&format!("Failed to load config: {error}"));
+                                MenuResult::Back
+                            },
                         }
                     },
-                    Err(error) => {
-                        notification.summary("Error");
-                        notification.body(format!("Failed to set device to {}: {error}", device.name).as_str());
+                    None => {
+                        enotify(&format!("Device {} has no ID", device.name));
+                        MenuResult::Back
                     }
-                };
-
-                MenuResult::Exit(Some(notification))
+                }
             }
             Err(error) => {
-                let maybe_notification = match error.kind() {
-                    IntErrorKind::Empty => None,
-                    _ => {
-                        notification.summary("Error");
-                        notification.body(format!("Failed to get index of selected item {selection:#?}: {error}").as_str());
-                        Some(notification)
-                    }
-                };
-                MenuResult::Back(maybe_notification)
+                if error.kind().clone() != IntErrorKind::Empty {
+                    enotify(&format!("Failed to get index of selected item {selection:#?}: {error}"))
+                }
+                MenuResult::Back
             }
+        }
+    }
+}
+
+pub async fn device_id(client: Arc<AuthCodePkceSpotify>, program: MenuProgram) -> Option<String> {
+    match Config::load() {
+        Ok(config) => {
+            match config.device_id {
+                Some(id) => Some(id),
+                None => {
+                    let _ = DeviceMenu::new(Arc::clone(&client))
+                        .await
+                        .select(program)
+                        .await;
+
+                    match Config::load() {
+                        Ok(config) => config.device_id,
+                        Err(error) => {
+                            enotify(&format!("Failed to load device id from config: {error}"));
+                            None
+                        }
+                    }
+                }
+            }
+        },
+        Err(error) => {
+            enotify(&format!("Failed to load device id from config: {error}"));
+            None
         }
     }
 }

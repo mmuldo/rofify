@@ -5,11 +5,14 @@ use std::{
         Arc,
         Mutex
     },
-    collections::HashMap, env
+    collections::HashMap,
 };
 use url::Url;
 use async_trait::async_trait;
-use notify_rust::Notification;
+use notify::{
+    notify,
+    enotify
+};
 use rspotify::{
     prelude::*,
     scopes,
@@ -19,11 +22,14 @@ use rspotify::{
     ClientError,
 };
 use rocket;
-use crate::{menu::{
-    Menu,
-    MenuProgram,
-    MenuResult
-}, ICON_PATH, config::Config};
+use crate::{
+    menu::{
+        Menu,
+        MenuProgram,
+        MenuResult
+    },
+    config::Config
+};
 use arboard::Clipboard;
 
 
@@ -56,8 +62,6 @@ pub enum Error {
     Io(#[from] io::Error),
     #[error("Error from spotify client: {0}")]
     Client(#[from] ClientError),
-    #[error("Failed to send notification: {0}")]
-    Notification(#[from] notify_rust::error::Error),
     #[error("Failed to parse url: {0}")]
     UrlParse(#[from] url::ParseError),
     #[error("Url missing required param: {0}")]
@@ -120,36 +124,34 @@ async fn redirect_uri_web_server() -> result::Result<String, rocket::Error> {
     Ok(code)
 }
 
-async fn get_code(url: &str) -> Result<String> {
-    let icon_path = env::current_dir().unwrap().join(ICON_PATH).into_os_string().into_string().unwrap();
-    let mut notification = Notification::new();
-
+async fn get_code(url: &str, program: MenuProgram) -> Result<String> {
     let mut clipboard = Clipboard::new().unwrap();
     clipboard.set_text(url).unwrap();
 
     match webbrowser::open(url) {
         Ok(_) => {
-            notification.summary("Login");
-            notification.body(&format!("Opened login page in your browser (login URL copied to clipboard)."));
+            notify(
+                "Login",
+                &format!("Opened login page in your browser (login URL copied to clipboard).")
+            );
         }
-        Err(error) => {
-            notification.summary(&format!("Error when trying to open URL in your browser: {error}"));
-            notification.body(&format!("Please navigate to login page manually (login URL copied to cpliboard)."));
-        }
+        Err(error) => enotify(
+            &format!(
+            "Error when trying to open URL in your browser: {error}.
+            Please navigate to login page manually (login URL copied to cpliboard)."
+        )
+        )
     }
-    notification.icon(&icon_path);
-    let _ = notification.show()?;
 
     let maybe_code = redirect_uri_web_server().await;
 
     match maybe_code {
         Ok(code) => Ok(code),
         Err(error) => {
-            notification.summary("Error");
-            notification.body(&format!("Failed to automatically refresh token: {error}"));
+            enotify(&format!("Failed to automatically refresh token: {error}. Please enter redirect URL manually."));
 
             let url_input_menu = InputMenu{};
-            match url_input_menu.select(MenuProgram::Rofi).await {
+            match url_input_menu.select(program).await {
                 MenuResult::Input(callback_url) => {
                     let url = Url::parse(&callback_url)?;
                     let params = url.query_pairs().collect::<HashMap<_, _>>();
@@ -166,7 +168,7 @@ async fn get_code(url: &str) -> Result<String> {
     }
 }
 
-async fn get_token(client: &mut AuthCodePkceSpotify, auth_url: &str) -> Result<()> {
+async fn get_token(client: &mut AuthCodePkceSpotify, auth_url: &str, program: MenuProgram) -> Result<()> {
     match client.read_token_cache(true).await {
         Ok(Some(new_token)) => {
             let expired = new_token.is_expired();
@@ -183,7 +185,7 @@ async fn get_token(client: &mut AuthCodePkceSpotify, auth_url: &str) -> Result<(
                     }
                     // If not, prompt the user for it
                     None => {
-                        let code = get_code(auth_url).await?;
+                        let code = get_code(auth_url, program).await?;
                         client.request_token(&code).await?;
                     }
                 }
@@ -191,7 +193,7 @@ async fn get_token(client: &mut AuthCodePkceSpotify, auth_url: &str) -> Result<(
         }
         // Otherwise following the usual procedure to get the token.
         _ => {
-            let code = get_code(auth_url).await?;
+            let code = get_code(auth_url, program).await?;
             client.request_token(&code).await?;
         }
     }
@@ -202,7 +204,10 @@ async fn get_token(client: &mut AuthCodePkceSpotify, auth_url: &str) -> Result<(
 fn redirect_uri_port() -> u16 {
     match Config::load() {
         Ok(config) => config.redirect_uri_port.unwrap_or(DEFAULT_REDIRECT_URI_PORT),
-        Err(_) => DEFAULT_REDIRECT_URI_PORT
+        Err(error) => {
+            enotify(&format!("Failed to load redirect uri port from config: {error}. Defaulting to {DEFAULT_REDIRECT_URI_PORT}."));
+            DEFAULT_REDIRECT_URI_PORT
+        }
     }
 }
 
@@ -210,7 +215,7 @@ fn redirect_uri() -> String {
     format!("http://localhost:{}/callback", redirect_uri_port())
 }
 
-pub async fn auth() -> Result<AuthCodePkceSpotify>{
+pub async fn auth(program: MenuProgram) -> Result<AuthCodePkceSpotify>{
     let creds = Credentials::new_pkce(CLIENT_ID);
 
     let oauth = OAuth {
@@ -223,7 +228,7 @@ pub async fn auth() -> Result<AuthCodePkceSpotify>{
     spotify.config.token_cached = true;
 
     let auth_url = spotify.get_authorize_url(None)?;
-    let _ = get_token(&mut spotify, &auth_url).await?;
+    let _ = get_token(&mut spotify, &auth_url, program).await?;
     
     Ok(spotify)
 }

@@ -1,8 +1,9 @@
-use rofify::config::Config;
+use rofify::menu::MenuProgram;
+use rofify::menu::device::device_id;
 use rspotify::model::{AdditionalType, PlayableItem};
 use rspotify::{AuthCodePkceSpotify, ClientError};
 use rspotify::prelude::OAuthClient;
-use std::result;
+use std::{result, fmt};
 use std::sync::Arc;
 use clap::Subcommand;
 
@@ -11,6 +12,10 @@ use clap::Subcommand;
 pub enum Error {
     #[error("Error from spotify client: {0}")]
     Client(#[from] ClientError),
+    #[error("Nothing is playing right now.")]
+    NoContext,
+    #[error("Item is not a playable track.")]
+    NotTrack,
 }
 
 pub type Result<T> = result::Result<T, Error>;
@@ -20,11 +25,22 @@ pub enum Action {
     PlayPause,
     Next,
     Previous,
-    ToggleLike,
+    Like,
 }
 
-async fn play_pause(client: Arc<AuthCodePkceSpotify>) -> Result<()> {
-    let config = Config::load().unwrap();
+impl fmt::Display for Action {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let text = match self {
+            Self::PlayPause => "play-pause",
+            Self::Next => "next",
+            Self::Previous => "previoius",
+            Self::Like => "like",
+        };
+        write!(f, "{text}")
+    }
+}
+
+async fn play_pause(client: Arc<AuthCodePkceSpotify>, program: MenuProgram) -> Result<()> {
     let maybe_playback = client.current_playback(
         None,
         Some([
@@ -40,44 +56,49 @@ async fn play_pause(client: Arc<AuthCodePkceSpotify>) -> Result<()> {
         }
     };
 
-    client.resume_playback(Some(&config.device_id), None).await?;
+    client.resume_playback(device_id(Arc::clone(&client), program).await.as_deref(), None).await?;
 
     Ok(())
 }
 
 async fn like(client: Arc<AuthCodePkceSpotify>) -> Result<()> {
-    if let PlayableItem::Track(track) = client.current_playing(
+    let maybe_currently_playing_context = client.current_playing(
         None,
         Some([
             &AdditionalType::Track,
         ])
-    ).await?
-        .unwrap()
-        .item
-        .unwrap() {
-        
-        if !client.current_user_saved_tracks_contains([track.id.clone().unwrap()]).await?[0] {
-            client.current_user_saved_tracks_add([track.id.clone().unwrap()]).await?
-        };
+    ).await?; 
 
-    }
-    Ok(())
+    Ok(match maybe_currently_playing_context {
+        Some(currently_playing_context) => {
+            match currently_playing_context.item {
+                Some(PlayableItem::Track(track)) => {
+                    if !client.current_user_saved_tracks_contains([track.id.clone().unwrap()]).await?[0] {
+                        Ok(client.current_user_saved_tracks_add([track.id.clone().unwrap()]).await?)
+                    } else {
+                        Ok(())
+                    }
+                },
+                _ => Err(Error::NotTrack)
+            }
 
-
+        },
+        None => Err(Error::NoContext)
+    }?)
 }
 
-pub async fn control(client: Arc<AuthCodePkceSpotify>, action: Action) -> Result<()> {
+pub async fn control(client: Arc<AuthCodePkceSpotify>, action: &Action, program: MenuProgram) -> Result<()> {
     match action {
         Action::PlayPause => {
-            play_pause(client).await?;
+            play_pause(client, program).await?;
         },
         Action::Next => {
-            client.next_track(None).await?;
+            client.next_track(device_id(Arc::clone(&client), program).await.as_deref()).await?;
         },
         Action::Previous => {
-            client.previous_track(None).await?;
+            client.previous_track(device_id(Arc::clone(&client), program).await.as_deref()).await?;
         },
-        Action::ToggleLike => {
+        Action::Like => {
             like(client).await?;
         }
     };

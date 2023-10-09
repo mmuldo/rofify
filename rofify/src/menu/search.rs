@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use notify_rust::Notification;
+use notify::enotify;
 use rspotify::{
     prelude::*,
     AuthCodePkceSpotify,
@@ -41,12 +41,11 @@ impl Menu for SearchMenu {
     }
 
     async fn select(&self, program: MenuProgram) -> MenuResult {
-        let mut notification = Notification::new();
         let query = self.prompt(program);
 
         if query.is_empty() {
             // user hit Esc or something
-            return MenuResult::Back(None);
+            return MenuResult::Back
         }
 
         let result = self.client.search(
@@ -72,12 +71,11 @@ impl Menu for SearchMenu {
                 SearchResult::Playlists(page) => MenuResult::Menu(Box::new(
                     PlaybackMenu::new(Arc::clone(&self.client), page.items).await
                 )),
-                _ => MenuResult::Exit(None)
+                _ => MenuResult::Exit
             }
             Err(error) => {
-                notification.summary("Error");
-                notification.body(format!("Failed to get results for search {query:#?}: {error}").as_str());
-                MenuResult::Back(Some(notification))
+                enotify(&format!("Failed to get results for search {query:#?}: {error}"));
+                MenuResult::Back
             }
         }
     }
