@@ -27,6 +27,7 @@ pub enum Action {
     Next,
     Previous,
     Like,
+    Shuffle,
 }
 
 impl fmt::Display for Action {
@@ -34,15 +35,16 @@ impl fmt::Display for Action {
         let text = match self {
             Self::PlayPause => "play-pause",
             Self::Next => "next",
-            Self::Previous => "previoius",
+            Self::Previous => "previous",
             Self::Like => "like",
+            Self::Shuffle => "shuffle",
         };
         write!(f, "{text}")
     }
 }
 
-async fn play_pause(client: Arc<AuthCodePkceSpotify>, program: MenuProgram) -> Result<()> {
-    let maybe_playback = client.current_playback(
+async fn play_pause(client: Arc<AuthCodePkceSpotify>,  device_id: Option<&str>) -> Result<()> {
+    let maybe_current_playback_context = client.current_playback(
         None,
         Some([
             &AdditionalType::Track,
@@ -50,15 +52,14 @@ async fn play_pause(client: Arc<AuthCodePkceSpotify>, program: MenuProgram) -> R
         ])
     ).await?;
 
-    if let Some(playback) = maybe_playback {
-        if playback.is_playing {
-            client.pause_playback(None).await?;
+    if let Some(current_playback_context) = maybe_current_playback_context {
+        if current_playback_context.is_playing {
+            client.pause_playback(device_id).await?;
             return Ok(());
-        }
-    };
+        } 
+    }
 
-    client.resume_playback(device_id(Arc::clone(&client), program).await.as_deref(), None).await?;
-
+    client.resume_playback(device_id, None).await?;
     Ok(())
 }
 
@@ -98,10 +99,30 @@ async fn like(client: Arc<AuthCodePkceSpotify>) -> Result<()> {
     }?)
 }
 
+async fn shuffle(client: Arc<AuthCodePkceSpotify>, device_id: Option<&str>) -> Result<()> {
+    let maybe_current_playback_context = client.current_playback(
+        None,
+        Some([
+            &AdditionalType::Track,
+            &AdditionalType::Episode
+        ])
+    ).await?;
+
+    Ok(match maybe_current_playback_context {
+        Some(current_playback_context) => {
+            let is_shuffled = current_playback_context.shuffle_state;
+            client.shuffle(!is_shuffled, device_id).await?;
+            notify("Shuffle", if is_shuffled { "disabled" } else { "enabled" });
+            Ok(())
+        },
+        None => Err(Error::NoContext)
+    }?)
+}
+
 pub async fn control(client: Arc<AuthCodePkceSpotify>, action: &Action, program: MenuProgram) -> Result<()> {
     match action {
         Action::PlayPause => {
-            play_pause(client, program).await?;
+            play_pause(Arc::clone(&client), device_id(Arc::clone(&client), program).await.as_deref()).await?;
         },
         Action::Next => {
             client.next_track(device_id(Arc::clone(&client), program).await.as_deref()).await?;
@@ -111,6 +132,9 @@ pub async fn control(client: Arc<AuthCodePkceSpotify>, action: &Action, program:
         },
         Action::Like => {
             like(client).await?;
+        },
+        Action::Shuffle => {
+            shuffle(Arc::clone(&client), device_id(Arc::clone(&client), program).await.as_deref()).await?;
         }
     };
 

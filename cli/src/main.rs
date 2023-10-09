@@ -43,7 +43,7 @@ async fn main() {
     match cli.command {
         Commands::Show => rofify::show(client, program).await,
         Commands::Control{ action } => if let Err(error) = controller::control(client, &action, program).await {
-            enotify(&format!("Failed to perform {}: {error}", &action));
+            enotify(&format!("Failed to perform \"{}\": {error}", &action));
             exit(1)
         },
         Commands::Visualize => println!("visualize"),
