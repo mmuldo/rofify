@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use notify::enotify;
 use std::{sync::Arc, process::exit};
-use rofify::{auth, menu::MenuProgram};
+use rofify::{auth, config::Config};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -20,31 +20,33 @@ enum Commands {
     Visualize
 }
 
-const PROGRAM: MenuProgram = MenuProgram::Rofi;
-
 #[tokio::main]
 async fn main() {
-    let mut exit_code = 0;
     let cli = Cli::parse();
 
-    match auth::auth(PROGRAM).await {
-        Ok(client) => {
-            let client = Arc::new(client);
-            match cli.command {
-                Commands::Show => rofify::show(client, PROGRAM).await,
-                Commands::Control{ action } => if let Err(error) = controller::control(client, &action, PROGRAM).await {
-                    enotify(&format!("Failed to perform {}: {error}", &action));
-                    exit_code = 1;
-                },
-                Commands::Visualize => println!("visualize"),
-            }
+    let program = match Config::load() {
+        Ok(config) => config.program.unwrap(),
+        Err(error) => {
+            enotify(&format!("Failed to load program from config: {error}"));
+            exit(1)
         },
+    };
+
+    let client = match auth::auth(program.clone()).await {
+        Ok(client) => Arc::new(client),
         Err(error) => {
             enotify(&format!("Failed to authenticate with spotify: {error}"));
-            exit_code = 1;
+            exit(1);
         }
+    };
+
+    match cli.command {
+        Commands::Show => rofify::show(client, program).await,
+        Commands::Control{ action } => if let Err(error) = controller::control(client, &action, program).await {
+            enotify(&format!("Failed to perform {}: {error}", &action));
+            exit(1)
+        },
+        Commands::Visualize => println!("visualize"),
+
     }
-
-    exit(exit_code);
-
 }

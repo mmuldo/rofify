@@ -3,11 +3,11 @@ pub mod mode;
 pub mod playback;
 pub mod search;
 
+use serde::{Serialize, Deserialize};
 use std::{
     process::{Command, Stdio},
     num::ParseIntError
 };
-
 use async_trait::async_trait;
 
 #[async_trait]
@@ -39,7 +39,7 @@ pub enum MenuResult {
     Input(String),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum MenuProgram {
     Rofi,
     DMenu,

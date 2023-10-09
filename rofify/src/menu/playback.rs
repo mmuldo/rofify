@@ -96,7 +96,7 @@ impl ListItem for SimplifiedAlbum {
             .iter()
             .map(|artist| artist.name.as_str())
             .collect();
-        format!("{}: {} | {}", index, self.name, artist_names.join(" "))
+        format!("{}: {} | {}", index, self.name, artist_names.join(", "))
     }
 }
 
@@ -126,7 +126,7 @@ impl ListItem for FullTrack {
             .iter()
             .map(|artist| artist.name.as_str())
             .collect();
-        format!("{}: {} | {} | {}", index, self.name, self.album.name, artist_names.join(" "))
+        format!("{}: {} | {} | {}", index, self.name, self.album.name, artist_names.join(", "))
     }
 }
 

@@ -5,7 +5,7 @@ use std::{
         Arc,
         Mutex
     },
-    collections::HashMap,
+    collections::HashMap, process::exit,
 };
 use url::Url;
 use async_trait::async_trait;
@@ -28,13 +28,13 @@ use crate::{
         MenuProgram,
         MenuResult
     },
-    config::Config
+    config::{Config, app_config_dir}
 };
 use arboard::Clipboard;
 
 
 const CLIENT_ID: &str = "cb4b2d66eaa84bdc98e5e179a5bfc902";
-const DEFAULT_REDIRECT_URI_PORT: u16 = 8888;
+const TOKEN_CACHE_FILE: &str = ".spotify_token_cache.json";
 
 const SCOPES: [&str; 17] = [
     "app-remote-control",
@@ -203,10 +203,10 @@ async fn get_token(client: &mut AuthCodePkceSpotify, auth_url: &str, program: Me
 
 fn redirect_uri_port() -> u16 {
     match Config::load() {
-        Ok(config) => config.redirect_uri_port.unwrap_or(DEFAULT_REDIRECT_URI_PORT),
+        Ok(config) => config.redirect_uri_port.unwrap(),
         Err(error) => {
-            enotify(&format!("Failed to load redirect uri port from config: {error}. Defaulting to {DEFAULT_REDIRECT_URI_PORT}."));
-            DEFAULT_REDIRECT_URI_PORT
+            enotify(&format!("Failed to load redirect uri port from config: {error}."));
+            exit(1)
         }
     }
 }
@@ -226,6 +226,7 @@ pub async fn auth(program: MenuProgram) -> Result<AuthCodePkceSpotify>{
 
     let mut spotify = AuthCodePkceSpotify::new(creds.clone(), oauth.clone());
     spotify.config.token_cached = true;
+    spotify.config.cache_path = app_config_dir().join(TOKEN_CACHE_FILE);
 
     let auth_url = spotify.get_authorize_url(None)?;
     let _ = get_token(&mut spotify, &auth_url, program).await?;

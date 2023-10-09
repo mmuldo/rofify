@@ -1,3 +1,4 @@
+use notify::notify;
 use rofify::menu::MenuProgram;
 use rofify::menu::device::device_id;
 use rspotify::model::{AdditionalType, PlayableItem};
@@ -73,9 +74,19 @@ async fn like(client: Arc<AuthCodePkceSpotify>) -> Result<()> {
         Some(currently_playing_context) => {
             match currently_playing_context.item {
                 Some(PlayableItem::Track(track)) => {
+                    let artist_names: Vec<&str> = track.artists
+                        .iter()
+                        .map(|artist| artist.name.as_str())
+                        .collect();
+                    let formatted_track = format!("{} | {} | {}", track.name, track.album.name, artist_names.join(", "));
+
                     if !client.current_user_saved_tracks_contains([track.id.clone().unwrap()]).await?[0] {
-                        Ok(client.current_user_saved_tracks_add([track.id.clone().unwrap()]).await?)
+                        client.current_user_saved_tracks_add([track.id.clone().unwrap()]).await?;
+
+                        notify("Added to liked songs:", &formatted_track);
+                        Ok(())
                     } else {
+                        notify("Already in liked songs:", &formatted_track);
                         Ok(())
                     }
                 },
