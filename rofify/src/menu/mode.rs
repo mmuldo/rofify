@@ -30,7 +30,7 @@ use super::{
     playback::PlaybackMenu
 };
 
-static LIKED_SONGS_LIMIT: usize = 100;
+const LIKED_SONGS_LIMIT: usize = 100;
 
 #[derive(Debug, EnumIter)]
 pub enum Mode {

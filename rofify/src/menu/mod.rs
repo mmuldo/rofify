@@ -38,6 +38,7 @@ pub enum MenuResult {
     Menu(Box<dyn Menu>),
     Back(Option<Notification>),
     Exit(Option<Notification>),
+    Input(String),
 }
 
 pub enum MenuProgram {

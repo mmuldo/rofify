@@ -3,7 +3,7 @@ use std::{io, result};
 
 use serde::{Serialize, Deserialize};
 
-static CONFIG_FILE: &str = "config.yml";
+const CONFIG_FILE: &str = "config.yml";
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -17,7 +17,8 @@ pub type Result<T> = result::Result<T, Error>;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Config {
-    pub device_id: String
+    pub device_id: String,
+    pub redirect_uri_port: Option<u16>
 }
 
 impl Config {

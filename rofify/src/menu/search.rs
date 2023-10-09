@@ -18,7 +18,7 @@ use super::{
     playback::PlaybackMenu
 };
 
-static SEARCH_LIMIT: u32 = 25;
+const SEARCH_LIMIT: u32 = 25;
 
 pub struct SearchMenu {
     client: Arc<AuthCodePkceSpotify>,
