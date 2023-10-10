@@ -17,7 +17,7 @@ enum Commands {
     #[command(subcommand)]
         action: controller::Action,
     },
-    Visualize
+    Visualize,
 }
 
 #[tokio::main]
@@ -47,6 +47,5 @@ async fn main() {
             exit(1)
         },
         Commands::Visualize => println!("visualize"),
-
     }
 }

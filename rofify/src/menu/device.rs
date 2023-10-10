@@ -68,7 +68,7 @@ impl Menu for DeviceMenu {
                                     Ok(_) => {
                                         match self.client.transfer_playback(&id, Some(true)).await {
                                             Ok(_) => {
-                                                notify(&format!("Device set to {}", device.name), "")
+                                                notify(&format!("Device set to {}", device.name), "", None)
                                             },
                                             Err(error) => {
                                                 enotify(&format!("Failed to switch playback to {}: {error}", device.name))

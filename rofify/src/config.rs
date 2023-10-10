@@ -4,8 +4,8 @@ use serde::{Serialize, Deserialize};
 
 use crate::menu::MenuProgram;
 
-pub const CONFIG_DIR: &str = ".config";
-pub const APP_NAME: &str = "rofify";
+const CONFIG_DIR: &str = ".config";
+const APP_NAME: &str = "rofify";
 const CONFIG_NAME: &str = "config";
 const DEFAULT_PROGRAM: MenuProgram = MenuProgram::Rofi;
 const DEFAULT_REDIRECT_URI_PORT: u16 = 8888;

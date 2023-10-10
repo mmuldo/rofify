@@ -140,7 +140,8 @@ async fn get_code(url: &str, program: MenuProgram) -> Result<String> {
         Ok(_) => {
             notify(
                 "Login",
-                &format!("Opened login page in your browser (login URL copied to clipboard).")
+                &format!("Opened login page in your browser (login URL copied to clipboard)."),
+                None
             );
         }
         Err(error) => enotify(
