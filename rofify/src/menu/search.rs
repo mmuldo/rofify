@@ -41,7 +41,7 @@ impl Menu for SearchMenu {
     }
 
     async fn select(&self, program: MenuProgram) -> MenuResult {
-        let query = self.prompt(program);
+        let query = self.prompt(program, "Search");
 
         if query.is_empty() {
             // user hit Esc or something

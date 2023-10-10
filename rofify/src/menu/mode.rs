@@ -97,7 +97,7 @@ impl Menu for ModeMenu {
     }
 
     async fn select(&self, program: MenuProgram) -> MenuResult {
-        let selection = self.prompt(program);
+        let selection = self.prompt(program, "Rofify");
         let parsed_mode = Mode::from_str(selection.as_str());
 
         match parsed_mode {

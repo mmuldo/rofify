@@ -14,7 +14,7 @@ use async_trait::async_trait;
 pub trait Menu {
     fn items(&self) -> Vec<String>;
 
-    fn prompt(&self, program: MenuProgram) -> String {
+    fn prompt(&self, program: MenuProgram, prompt_message: &str) -> String {
         let input_from_echo = Command::new("echo")
             .arg(self.items().join("\n"))
             .stdout(Stdio::piped())
@@ -22,6 +22,7 @@ pub trait Menu {
             .unwrap();
 
         let selection = program.command()
+            .args(["-p", prompt_message])
             .stdin(input_from_echo.stdout.unwrap())
             .output()
             .unwrap();
@@ -50,10 +51,14 @@ impl MenuProgram {
         match self {
             MenuProgram::Rofi => {
                 let mut cmd = Command::new("rofi");
-                cmd.arg("-dmenu");
+                cmd.args(["-dmenu", "-i"]);
                 cmd
             },
-            MenuProgram::DMenu => Command::new("dmenu"),
+            MenuProgram::DMenu => {
+                let mut cmd = Command::new("dmenu");
+                cmd.arg("-i");
+                cmd
+            },
         }
     }
 }

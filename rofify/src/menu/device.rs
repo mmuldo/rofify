@@ -51,7 +51,7 @@ impl Menu for DeviceMenu {
     }
 
     async fn select(&self, program: MenuProgram) -> MenuResult {
-        let selection = self.prompt(program);
+        let selection = self.prompt(program, "Select Device");
         let parsed_index = selection_index(&selection);
 
         match parsed_index {

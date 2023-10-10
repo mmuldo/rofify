@@ -54,7 +54,7 @@ impl<T: ListItem + StartPlayback + Send + Sync> Menu for PlaybackMenu<T> {
     }
 
     async fn select(&self, program: MenuProgram) -> MenuResult {
-        let selection = self.prompt(program.clone());
+        let selection = self.prompt(program.clone(), T::prompt_message().as_str());
         let parsed_index = selection_index(&selection);
 
         match parsed_index {
@@ -82,6 +82,8 @@ impl<T: ListItem + StartPlayback + Send + Sync> Menu for PlaybackMenu<T> {
 }
 
 pub trait ListItem {
+    fn prompt_message() -> String;
+
     fn list_item(&self, index: usize) -> String;
 }
 
@@ -91,6 +93,10 @@ pub trait StartPlayback {
 }
 
 impl ListItem for SimplifiedAlbum {
+    fn prompt_message() -> String {
+        "Select Album".to_string()
+    }
+
     fn list_item(&self, index: usize) -> String {
         let artist_names: Vec<&str> = self.artists
             .iter()
@@ -121,6 +127,10 @@ impl StartPlayback for SimplifiedAlbum {
 }
 
 impl ListItem for FullTrack {
+    fn prompt_message() -> String {
+        "Select Track".to_string()
+    }
+
     fn list_item(&self, index: usize) -> String {
         let artist_names: Vec<&str> = self.artists
             .iter()
@@ -151,6 +161,10 @@ impl StartPlayback for FullTrack {
 }
 
 impl ListItem for SimplifiedPlaylist {
+    fn prompt_message() -> String {
+        "Select Playlist".to_string()
+    }
+
     fn list_item(&self, index: usize) -> String {
         let owner_name = match &self.owner.display_name {
             Some(name) => name.clone(),
@@ -177,6 +191,10 @@ impl StartPlayback for SimplifiedPlaylist {
 }
 
 impl ListItem for FullArtist {
+    fn prompt_message() -> String {
+        "Select Artist".to_string()
+    }
+
     fn list_item(&self, index: usize) -> String {
         format!("{}: {}", index, self.name)
     }

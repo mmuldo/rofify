@@ -77,7 +77,15 @@ struct TokenRetriever {
     code: String
 }
 
-struct InputMenu;
+struct InputMenu {
+    prompt_message: String
+}
+
+impl InputMenu {
+    fn new(prompt_message: String) -> Self {
+        Self { prompt_message }
+    }
+}
 
 #[async_trait]
 impl Menu for InputMenu {
@@ -86,7 +94,7 @@ impl Menu for InputMenu {
     }
 
     async fn select(&self, program: MenuProgram) -> MenuResult {
-        let selection = self.prompt(program);
+        let selection = self.prompt(program, self.prompt_message.as_str());
 
         MenuResult::Input(selection)
     }
@@ -150,7 +158,7 @@ async fn get_code(url: &str, program: MenuProgram) -> Result<String> {
         Err(error) => {
             enotify(&format!("Failed to automatically refresh token: {error}. Please enter redirect URL manually."));
 
-            let url_input_menu = InputMenu{};
+            let url_input_menu = InputMenu::new("Enter the URL you were redirected to".to_string());
             match url_input_menu.select(program).await {
                 MenuResult::Input(callback_url) => {
                     let url = Url::parse(&callback_url)?;
