@@ -1,9 +1,10 @@
 use notify::{notify, cover_art_icon_path, icons_dir};
 use rofify::menu::MenuProgram;
 use rofify::menu::device::device_id;
-use rspotify::model::{AdditionalType, PlayableItem};
+use rspotify::model::{AdditionalType, PlayableItem, CurrentPlaybackContext};
 use rspotify::{AuthCodePkceSpotify, ClientError};
 use rspotify::prelude::OAuthClient;
+use std::future::Future;
 use std::{result, fmt, fs, io};
 use std::sync::Arc;
 use clap::Subcommand;
@@ -53,145 +54,193 @@ impl fmt::Display for Action {
     }
 }
 
-async fn play_pause(client: Arc<AuthCodePkceSpotify>,  device_id: Option<&str>) -> Result<()> {
-    let maybe_current_playback_context = client.current_playback(
-        None,
-        Some([
-            &AdditionalType::Track,
-            &AdditionalType::Episode
-        ])
-    ).await?;
+struct Controller {
+    client: Arc<AuthCodePkceSpotify>,
+    device_id: Option<String>,
+}
 
-    if let Some(current_playback_context) = maybe_current_playback_context {
-        if current_playback_context.is_playing {
-            client.pause_playback(device_id).await?;
-            return Ok(());
-        } 
+impl Controller {
+    async fn new(client: Arc<AuthCodePkceSpotify>, program: MenuProgram) -> Self {
+        let device_id = device_id(
+            Arc::clone(&client),
+            program.clone()
+        ).await;
+
+        Self { client, device_id }
     }
 
-    client.resume_playback(device_id, None).await?;
+    async fn control<F, Fut>(&self, with_context: F) -> Result<()>
+    where
+        F: FnOnce(Arc<AuthCodePkceSpotify>, CurrentPlaybackContext, Option<String>) -> Fut,
+        Fut: Future<Output = Result<()>>
+    {
+        let maybe_current_playback_context = self.client.current_playback(
+            None,
+            Some([
+                &AdditionalType::Track,
+                &AdditionalType::Episode
+            ])
+        ).await?;
+
+        Ok(match maybe_current_playback_context {
+            Some(current_playback_context) => {
+                with_context(
+                    Arc::clone(&self.client),
+                    current_playback_context,
+                    self.device_id.clone()
+                ).await?;
+                Ok(())
+            },
+            None => Err(Error::NoContext)
+        }?)
+    }
+
+    async fn next(&self) -> Result<()> {
+        self.client.next_track(self.device_id.as_deref()).await?;
+        Ok(())
+    }
+
+    async fn previous(&self) -> Result<()> {
+        self.client.previous_track(self.device_id.as_deref()).await?;
+        Ok(())
+    }
+
+    async fn play_pause(&self) -> Result<()> {
+        self.control(|client, context, device_id| async move {
+            play_pause(client, context, device_id).await
+        }).await
+    }
+
+    async fn shuffle(&self) -> Result<()> {
+        self.control(|client, context, device_id| async move {
+            shuffle(client, context, device_id).await
+        }).await
+    }
+
+    async fn like(&self) -> Result<()> {
+        self.control(|client, context, _| async move {
+            like(client, context).await
+        }).await
+    }
+
+    async fn on_change(&self) -> Result<()> {
+        self.control(|_, context, _| async move {
+            on_change(context).await
+        }).await
+    }
+}
+
+async fn play_pause(
+    client: Arc<AuthCodePkceSpotify>,
+    context: CurrentPlaybackContext,
+    device_id: Option<String>
+) -> Result<()> {
+    if context.is_playing {
+        client.pause_playback(device_id.as_deref()).await?;
+    } else {
+        client.resume_playback(device_id.as_deref(), None).await?;
+    }
+
     Ok(())
 }
 
-async fn like(client: Arc<AuthCodePkceSpotify>) -> Result<()> {
-    let maybe_currently_playing_context = client.current_playing(
-        None,
-        Some([
-            &AdditionalType::Track,
-        ])
-    ).await?; 
-
-    Ok(match maybe_currently_playing_context {
-        Some(currently_playing_context) => {
-            match currently_playing_context.item {
-                Some(PlayableItem::Track(track)) => {
-                    let artist_names: Vec<&str> = track.artists
-                        .iter()
-                        .map(|artist| artist.name.as_str())
-                        .collect();
-                    let formatted_track = format!("{} | {} | {}", track.name, track.album.name, artist_names.join(", "));
-
-                    if !client.current_user_saved_tracks_contains([track.id.clone().unwrap()]).await?[0] {
-                        client.current_user_saved_tracks_add([track.id.clone().unwrap()]).await?;
-
-                        notify("Added to liked songs:", &formatted_track, None);
-                        Ok(())
-                    } else {
-                        notify("Already in liked songs:", &formatted_track, None);
-                        Ok(())
-                    }
-                },
-                _ => Err(Error::NotTrack)
-            }
-
-        },
-        None => Err(Error::NoContext)
-    }?)
+async fn shuffle(
+    client: Arc<AuthCodePkceSpotify>,
+    context: CurrentPlaybackContext,
+    device_id: Option<String>
+) -> Result<()> {
+    let is_shuffled = context.shuffle_state;
+    client.shuffle(!is_shuffled, device_id.as_deref()).await?;
+    notify("Shuffle", if is_shuffled { "disabled" } else { "enabled" }, None);
+    Ok(())
 }
 
-async fn shuffle(client: Arc<AuthCodePkceSpotify>, device_id: Option<&str>) -> Result<()> {
-    let maybe_current_playback_context = client.current_playback(
-        None,
-        Some([
-            &AdditionalType::Track,
-            &AdditionalType::Episode
-        ])
-    ).await?;
+async fn like(
+    client: Arc<AuthCodePkceSpotify>,
+    context: CurrentPlaybackContext,
+) -> Result<()> {
+    match context.item {
+        Some(PlayableItem::Track(track)) => {
+            let artist_names: Vec<&str> = track.artists
+                .iter()
+                .map(|artist| artist.name.as_str())
+                .collect();
+            let formatted_track = format!("{} | {} | {}", track.name, track.album.name, artist_names.join(", "));
 
-    Ok(match maybe_current_playback_context {
-        Some(current_playback_context) => {
-            let is_shuffled = current_playback_context.shuffle_state;
-            client.shuffle(!is_shuffled, device_id).await?;
-            notify("Shuffle", if is_shuffled { "disabled" } else { "enabled" }, None);
-            Ok(())
-        },
-        None => Err(Error::NoContext)
-    }?)
-}
+            if !client.current_user_saved_tracks_contains([track.id.clone().unwrap()]).await?[0] {
+                client.current_user_saved_tracks_add([track.id.clone().unwrap()]).await?;
 
-async fn on_change(client: Arc<AuthCodePkceSpotify>) -> Result<()> {
-    let maybe_currently_playing_context = client.current_playing(
-        None,
-        Some([
-            &AdditionalType::Track,
-            &AdditionalType::Episode,
-        ])
-    ).await?; 
-
-    Ok(match maybe_currently_playing_context {
-        Some(currently_playing_context) => {
-            match currently_playing_context.item {
-                Some(PlayableItem::Track(track)) => {
-                    let artist_names: Vec<&str> = track.artists
-                        .iter()
-                        .map(|artist| artist.name.as_str())
-                        .collect();
-
-                    let cover_art = track.album.images.last();
-
-                    let raw_image = reqwest::get(&cover_art.unwrap().url)
-                        .await?
-                        .bytes()
-                        .await?;
-                    let cover_art_icon = image::load_from_memory(&raw_image)?;
-                    fs::create_dir_all(icons_dir())?;
-                    cover_art_icon.save(cover_art_icon_path())?;
-
-                    match cover_art_icon_path().into_os_string().into_string() {
-                        Ok(icon_path) => Ok(notify(
-                            &track.name,
-                            &format!("{} - {}", artist_names.join(", "), track.album.name),
-                            Some(icon_path)
-                        )),
-                        Err(_) => Err(Error::PathToString)
-                    }
-                },
-                _ => Err(Error::NotTrack)
+                notify("Added to liked songs:", &formatted_track, None);
+                Ok(())
+            } else {
+                notify("Already in liked songs:", &formatted_track, None);
+                Ok(())
             }
         },
-        None => Err(Error::NoContext)
-    }?)
+        _ => Err(Error::NotTrack)
+    }
+
+}
+
+async fn on_change(
+    context: CurrentPlaybackContext,
+) -> Result<()> {
+    match context.item {
+        Some(PlayableItem::Track(track)) => {
+            let artist_names: Vec<&str> = track.artists
+                .iter()
+                .map(|artist| artist.name.as_str())
+                .collect();
+
+            let cover_art = track.album.images.last();
+
+            let raw_image = reqwest::get(&cover_art.unwrap().url)
+                .await?
+                .bytes()
+            .await?;
+            let cover_art_icon = image::load_from_memory(&raw_image)?;
+            fs::create_dir_all(icons_dir())?;
+            cover_art_icon.save(cover_art_icon_path())?;
+
+            match cover_art_icon_path().into_os_string().into_string() {
+                Ok(icon_path) => Ok(notify(
+                    &track.name,
+                    &format!("{} - {}", artist_names.join(", "), track.album.name),
+                    Some(icon_path)
+                )),
+                Err(_) => Err(Error::PathToString)
+            }
+        },
+        _ => Err(Error::NotTrack)
+    }
 }
 
 pub async fn control(client: Arc<AuthCodePkceSpotify>, action: &Action, program: MenuProgram) -> Result<()> {
+    let controller = Controller::new(Arc::clone(&client), program).await;
     match action {
         Action::PlayPause => {
-            play_pause(Arc::clone(&client), device_id(Arc::clone(&client), program).await.as_deref()).await?;
+            match controller.play_pause().await {
+                Err(Error::NoContext) => controller
+                    .client
+                    .resume_playback(controller.device_id.as_deref(), None)
+                    .await?,
+                otherwise => otherwise?
+            };
         },
         Action::Next => {
-            client.next_track(device_id(Arc::clone(&client), program).await.as_deref()).await?;
+            controller.next().await?;
         },
         Action::Previous => {
-            client.previous_track(device_id(Arc::clone(&client), program).await.as_deref()).await?;
+            controller.previous().await?;
         },
         Action::Like => {
-            like(client).await?;
+            controller.like().await?;
         },
         Action::Shuffle => {
-            shuffle(Arc::clone(&client), device_id(Arc::clone(&client), program).await.as_deref()).await?;
+            controller.shuffle().await?;
         },
         Action::OnChange => {
-            on_change(Arc::clone(&client)).await?;
+            controller.on_change().await?;
         }
     };
 
