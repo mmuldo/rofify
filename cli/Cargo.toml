@@ -11,3 +11,4 @@ controller = { path = "../controller" }
 notify = { path = "../notify" }
 rofify = { path = "../rofify" }
 tokio = { version = "1.32.0", features = ["full"] }
+visualizer = { path = "../visualizer" }

@@ -46,6 +46,8 @@ async fn main() {
             enotify(&format!("Failed to perform \"{}\": {error}", &action));
             exit(1)
         },
-        Commands::Visualize => println!("visualize"),
+        Commands::Visualize => {
+            visualizer::show(client);
+        },
     }
 }
