@@ -47,7 +47,7 @@ async fn main() {
             exit(1)
         },
         Commands::Visualize => {
-            visualizer::show(client);
+            visualizer::show(client).unwrap();
         },
     }
 }
