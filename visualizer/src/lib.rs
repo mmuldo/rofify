@@ -101,7 +101,7 @@ impl Client {
     fn spawn(self) {
         tokio::spawn(async move {
             while let Ok(()) = self.tx.send(self.get_state().await).await {
-                tokio::time::sleep(time::Duration::from_millis(50)).await;
+                tokio::time::sleep(time::Duration::from_secs(5)).await;
             }
         });
     }

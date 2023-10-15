@@ -44,6 +44,7 @@ async fn main() {
         Commands::Show => rofify::show(client, program).await,
         Commands::Control{ action } => if let Err(error) = controller::control(client, &action, program).await {
             enotify(&format!("Failed to perform \"{}\": {error}", &action));
+            println!("{:#?}", error);
             exit(1)
         },
         Commands::Visualize => {
