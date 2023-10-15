@@ -1,8 +1,10 @@
+mod spectrum;
 use std::{sync::Arc, thread, result, time};
 use chrono;
 
-use eframe::{egui::{self, Vec2}, run_native, CreationContext, NativeOptions, App, Frame, emath::Numeric, epaint::{Color32, FontFamily}};
+use eframe::{egui::{self, Vec2, FontDefinitions}, run_native, CreationContext, NativeOptions, App, Frame, emath::Numeric, epaint::{Color32, FontFamily, FontId}, Storage};
 use rspotify::{AuthCodePkceSpotify, prelude::OAuthClient, model::{AdditionalType, PlayableItem}, ClientError};
+use spectrum::Bode;
 use tokio::sync::mpsc::{channel, Sender, Receiver};
 
 #[derive(thiserror::Error, Debug)]
@@ -107,6 +109,7 @@ impl Client {
 
 struct Visualizer {
     state: State,
+    bode: Bode,
     rx: Receiver<StateResult<State>>
 }
 
@@ -114,6 +117,7 @@ impl Visualizer {
     fn new(rx: Receiver<StateResult<State>>) -> Self {
         Self {
             state: State::default(),
+            bode: Bode::new(),
             rx
         }
     }
@@ -153,15 +157,23 @@ impl App for Visualizer {
 
                 let icons_layout = egui::Layout::top_down(eframe::emath::Align::Center);
                 columns[2].with_layout(icons_layout, |ui| {
-                    let cover_art_width = ui.max_rect().max.x / 3.;
-                    ui.add(
-                        egui::Image::new(format!("file:///home/matt/.local/share/rofify/icons/{}", if self.state.liked {"liked.png"} else {"unliked.png"}))
-                            .max_width(cover_art_width / 2.)
-                    );
-                    ui.add(
-                        egui::Image::new(format!("file:///home/matt/.local/share/rofify/icons/{}", if self.state.shuffled {"shuffled.png"} else {"unshuffled.png"}))
-                            .max_width(cover_art_width / 2.)
-                    );
+                    let cover_art_height = ui.max_rect().max.x / 3.;
+                    let space = cover_art_height / 3.;
+                    let font_size = cover_art_height / 3.;
+                    let active_color = Color32::from_rgb(196, 39, 39);
+                    let inactive_color = Color32::from_rgb(156, 116, 116);
+
+                    ui.add_space(space);
+                    let liked = egui::RichText::new("")
+                        .font(FontId::new(font_size, FontFamily::Proportional))
+                        .color(if self.state.liked {active_color} else {inactive_color});
+                    ui.label(liked);
+
+                    ui.add_space(space);
+                    let shuffled = egui::RichText::new("")
+                        .font(FontId::new(font_size, FontFamily::Proportional))
+                        .color(if self.state.shuffled {active_color} else {inactive_color});
+                    ui.label(shuffled);
                 })
             });
 
@@ -172,6 +184,8 @@ impl App for Visualizer {
                 .desired_height(10.)
                 .fill(Color32::from_rgb(122, 36, 39));
             ui.add(progress_bar);
+
+            self.bode.show(ui);
 
         });
 
@@ -211,6 +225,16 @@ pub fn show(client: Arc<AuthCodePkceSpotify>) -> eframe::Result<()> {
         native_options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
+
+            let mut fonts = FontDefinitions::default();
+            fonts.font_data.insert(
+                "awesome".to_owned(),
+                egui::FontData::from_static(include_bytes!("font-awesome-solid.ttf"))
+            );
+            fonts.families.get_mut(&FontFamily::Proportional)
+                .unwrap()
+                .push("awesome".to_owned());
+            cc.egui_ctx.set_fonts(fonts);
 
             Box::new(visualizer)
         })
