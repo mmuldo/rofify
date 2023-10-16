@@ -4,6 +4,5 @@ members = [
     "controller",
     "notify",
     "rofify",
-    "visualizer",
 ]
 resolver = "2"

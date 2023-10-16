@@ -17,7 +17,6 @@ enum Commands {
     #[command(subcommand)]
         action: controller::Action,
     },
-    Visualize,
 }
 
 #[tokio::main]
@@ -46,9 +45,6 @@ async fn main() {
             enotify(&format!("Failed to perform \"{}\": {error}", &action));
             println!("{:#?}", error);
             exit(1)
-        },
-        Commands::Visualize => {
-            visualizer::show(client).unwrap();
         },
     }
 }

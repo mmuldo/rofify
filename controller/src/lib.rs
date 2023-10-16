@@ -1,7 +1,7 @@
 use notify::{notify, cover_art_icon_path, icons_dir};
 use rofify::menu::MenuProgram;
 use rofify::menu::device::device_id;
-use rspotify::model::{AdditionalType, PlayableItem, CurrentPlaybackContext};
+use rspotify::model::{AdditionalType, PlayableItem, CurrentPlaybackContext, RepeatState};
 use rspotify::{AuthCodePkceSpotify, ClientError};
 use rspotify::prelude::OAuthClient;
 use std::future::Future;
@@ -37,6 +37,7 @@ pub enum Action {
     Previous,
     Like,
     Shuffle,
+    Repeat,
     OnChange,
 }
 
@@ -48,6 +49,7 @@ impl fmt::Display for Action {
             Self::Previous => "previous",
             Self::Like => "like",
             Self::Shuffle => "shuffle",
+            Self::Repeat => "repeat",
             Self::OnChange => "on-change",
         };
         write!(f, "{text}")
@@ -117,6 +119,13 @@ impl Controller {
         }).await
     }
 
+    async fn repeat(&self) -> Result<()> {
+        self.control(|client, context, device_id| async move {
+            repeat(client, context, device_id).await
+        }).await
+    }
+
+
     async fn like(&self) -> Result<()> {
         self.control(|client, context, _| async move {
             like(client, context).await
@@ -152,6 +161,22 @@ async fn shuffle(
     let is_shuffled = context.shuffle_state;
     client.shuffle(!is_shuffled, device_id.as_deref()).await?;
     notify("Shuffle", if is_shuffled { "disabled" } else { "enabled" }, None);
+    Ok(())
+}
+
+async fn repeat(
+    client: Arc<AuthCodePkceSpotify>,
+    context: CurrentPlaybackContext,
+    device_id: Option<String>
+) -> Result<()> {
+    let repeat_state = context.repeat_state;
+    let (new_repeat_state, name) = match repeat_state {
+        RepeatState::Off => (RepeatState::Context, "context"),
+        RepeatState::Context => (RepeatState::Track, "track"),
+        RepeatState::Track => (RepeatState::Off, "off"),
+    };
+    client.repeat(new_repeat_state.clone(), device_id.as_deref()).await?;
+    notify("Repeat", name, None);
     Ok(())
 }
 
@@ -238,6 +263,9 @@ pub async fn control(client: Arc<AuthCodePkceSpotify>, action: &Action, program:
         },
         Action::Shuffle => {
             controller.shuffle().await?;
+        },
+        Action::Repeat => {
+            controller.repeat().await?;
         },
         Action::OnChange => {
             controller.on_change().await?;
